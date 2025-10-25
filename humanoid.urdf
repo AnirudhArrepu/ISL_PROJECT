@@ -1,0 +1,113 @@
+<?xml version="1.0"?>
+<robot name="simple_humanoid">
+
+  <!-- Torso -->
+  <link name="torso">
+    <inertial>
+      <mass value="10.0"/>
+      <inertia ixx="0.1" iyy="0.1" izz="0.1"/>
+    </inertial>
+    <visual>
+      <geometry><capsule length="0.5" radius="0.1"/></geometry>
+      <material name="blue"><color rgba="0 0 1 1"/></material>
+    </visual>
+    <collision>
+      <geometry><capsule length="0.5" radius="0.1"/></geometry>
+    </collision>
+  </link>
+
+  <!-- Right Leg -->
+  <link name="right_thigh">
+    <inertial>
+      <mass value="3.0"/>
+      <inertia ixx="0.05" iyy="0.05" izz="0.05"/>
+    </inertial>
+    <visual>
+      <geometry><capsule length="0.4" radius="0.05"/></geometry>
+      <material name="red"><color rgba="1 0 0 1"/></material>
+    </visual>
+    <collision>
+      <geometry><capsule length="0.4" radius="0.05"/></geometry>
+    </collision>
+  </link>
+
+  <link name="right_shin">
+    <inertial>
+      <mass value="2.0"/>
+      <inertia ixx="0.02" iyy="0.02" izz="0.02"/>
+    </inertial>
+    <visual>
+      <geometry><capsule length="0.4" radius="0.04"/></geometry>
+      <material name="red"><color rgba="1 0 0 1"/></material>
+    </visual>
+    <collision>
+      <geometry><capsule length="0.4" radius="0.04"/></geometry>
+    </collision>
+  </link>
+
+  <!-- Right Hip Joint -->
+  <joint name="right_hip" type="revolute">
+    <parent link="torso"/>
+    <child link="right_thigh"/>
+    <origin xyz="0 -0.1 -0.25" rpy="0 0 0"/>
+    <axis xyz="1 0 0"/>
+    <limit lower="-1.57" upper="1.57" effort="50" velocity="5"/>
+  </joint>
+
+  <!-- Right Knee Joint -->
+  <joint name="right_knee" type="revolute">
+    <parent link="right_thigh"/>
+    <child link="right_shin"/>
+    <origin xyz="0 0 -0.4" rpy="0 0 0"/>
+    <axis xyz="1 0 0"/>
+    <limit lower="0" upper="2.0" effort="50" velocity="5"/>
+  </joint>
+
+  <!-- Left Leg (mirror) -->
+  <link name="left_thigh">
+    <inertial>
+      <mass value="3.0"/>
+      <inertia ixx="0.05" iyy="0.05" izz="0.05"/>
+    </inertial>
+    <visual>
+      <geometry><capsule length="0.4" radius="0.05"/></geometry>
+      <material name="green"><color rgba="0 1 0 1"/></material>
+    </visual>
+    <collision>
+      <geometry><capsule length="0.4" radius="0.05"/></geometry>
+    </collision>
+  </link>
+
+  <link name="left_shin">
+    <inertial>
+      <mass value="2.0"/>
+      <inertia ixx="0.02" iyy="0.02" izz="0.02"/>
+    </inertial>
+    <visual>
+      <geometry><capsule length="0.4" radius="0.04"/></geometry>
+      <material name="green"><color rgba="0 1 0 1"/></material>
+    </visual>
+    <collision>
+      <geometry><capsule length="0.4" radius="0.04"/></geometry>
+    </collision>
+  </link>
+
+  <joint name="left_hip" type="revolute">
+    <parent link="torso"/>
+    <child link="left_thigh"/>
+    <origin xyz="0 0.1 -0.25" rpy="0 0 0"/>
+    <axis xyz="1 0 0"/>
+    <limit lower="-1.57" upper="1.57" effort="50" velocity="5"/>
+  </joint>
+
+  <joint name="left_knee" type="revolute">
+    <parent link="left_thigh"/>
+    <child link="left_shin"/>
+    <origin xyz="0 0 -0.4" rpy="0 0 0"/>
+    <axis xyz="1 0 0"/>
+    <limit lower="0" upper="2.0" effort="50" velocity="5"/>
+  </joint>
+
+  <!-- Arms can be added similarly if needed -->
+
+</robot>
