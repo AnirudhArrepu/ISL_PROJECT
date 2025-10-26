@@ -186,8 +186,8 @@ class DQNAgent:
         """Convert discrete action indices to continuous torque array."""
         return np.array([self.torque_bins[a] for a in action_indices], dtype=np.float32)
 
-    def compute_reward(self, env, prev_com, torques,
-                       w_vel=2.0, w_live=0.5, w_energy=0.01):
+    def compute_reward(self, env, prev_com, torques, step_count, w_survival=0.01,
+                       w_vel=2.0, w_live=0.5, w_energy=0.008):
         """Custom reward encouraging forward velocity, stability, and efficiency."""
         pos, _ = p.getBasePositionAndOrientation(env.humanoid)
         z_height = pos[2]
@@ -202,10 +202,13 @@ class DQNAgent:
         # Energy penalty
         energy_penalty = np.sum(np.square(torques))
 
+        # survival reward based on step_count
+        r_survival = w_survival * step_count
+
         # Total reward
-        reward = (w_vel * forward_vel) + (w_live * alive_bonus) - (w_energy * energy_penalty)
-        done = z_height < 0.3  # terminate if fallen
-        return reward, done, torso_com
+        reward = (w_vel * forward_vel) + (w_live * alive_bonus) - (w_energy * energy_penalty) + r_survival
+        done = z_height < 0.5  # terminate if fallen
+        return reward, done , torso_com
 
     def remember(self, state, action, reward, next_state, done):
         self.replay_buffer.add(state, action, reward, next_state, done)

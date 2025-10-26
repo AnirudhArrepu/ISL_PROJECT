@@ -127,52 +127,58 @@ def skeleton_to_theta_init(keypoints_25):
 
 # theta_init = np.radians(theta_init)  # convert to radians if needed
 
-env = HumanoidWalkEnv(render=True)
-state_dim = env.observation_space.shape[0]
-n_joints = len(env.joint_indices)
 
-# Initialize DQN agent
-agent = DQNAgent(state_dim, n_joints, n_bins=5, device='cpu')
+def run_pipeline():
+    env = HumanoidWalkEnv(render=True)
+    state_dim = env.observation_space.shape[0]
+    n_joints = len(env.joint_indices)
 
-# Training loop (simplified)
-# Training loop (improved)
-num_episodes = 100
-max_steps = 1000  # safety limit to prevent infinite loops
+    # Initialize DQN agent
+    agent = DQNAgent(state_dim, n_joints, n_bins=5, device='cpu')
 
-for ep in range(num_episodes):
-    state, _ = env.reset(initial_pose=np.zeros(n_joints))  # can replace with pose-based init
-    pos, _ = p.getBasePositionAndOrientation(env.humanoid)
-    prev_com = np.array(pos)
-    done = False
-    total_reward = 0.0
-    step_count = 0
+    # Training loop (simplified)
+    # Training loop (improved)
+    num_episodes = 100
+    max_steps = 1000  # safety limit to prevent infinite loops
 
-    while not done and step_count < max_steps:
-        # Select discrete joint actions
-        action_indices = agent.q_net.act(state, epsilon=agent.epsilon)
+    for ep in range(num_episodes):
+        state, _ = env.reset(initial_pose=np.zeros(n_joints))  # can replace with pose-based init
+        pos, _ = p.getBasePositionAndOrientation(env.humanoid)
+        prev_com = np.array(pos)
+        done = False
+        total_reward = 0.0
+        step_count = 0
 
-        # Convert to torques and scale moderately
-        torques = agent.indices_to_torques(action_indices) * 40.0
+        while not done and step_count < max_steps:
+            # Select discrete joint actions
+            action_indices = agent.q_net.act(state, epsilon=agent.epsilon)
 
-        # Apply torques through the environment
-        next_state, _, env_done, _, _ = env.step(torques)
+            # Convert to torques and scale moderately
+            torques = agent.indices_to_torques(action_indices)*50
 
-        # Compute custom reward using actual COM displacement
-        reward, fallen, new_com = agent.compute_reward(env, prev_com, torques)
+            # Apply torques through the environment
+            next_state, _, env_done, _, _ = env.step(torques)
 
-        # Determine done condition (either environment or fall)
-        done = env_done or fallen
+            # Compute custom reward using actual COM displacement
+            reward, fallen, new_com = agent.compute_reward(env, prev_com, torques, step_count)
 
-        # Store transition
-        agent.remember(state, action_indices, reward, next_state, done)
-        agent.update()
+            # Determine done condition (either environment or fall)
+            done = env_done or fallen
 
-        # Advance
-        state = next_state
-        prev_com = new_com
-        total_reward += reward
-        step_count += 1
+            # Store transition
+            agent.remember(state, action_indices, reward, next_state, done)
+            agent.update()
 
-    print(f"Episode {ep+1:03d} | Steps: {step_count:4d} | Total Reward: {total_reward:8.2f} | Epsilon: {agent.epsilon:.3f}")
+            # Advance
+            state = next_state
+            prev_com = new_com
+            total_reward += reward
+            step_count += 1
 
-env.close()
+        print(f"Episode {ep+1:03d} | Steps: {step_count:4d} | Total Reward: {total_reward:8.2f} | Epsilon: {agent.epsilon:.3f}")
+
+    env.close()
+
+if __name__ == "__main__":
+    run_pipeline()
+
