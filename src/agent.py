@@ -14,7 +14,7 @@ from collections import deque
 # Q-Network
 # ----------------------
 class QNetwork(nn.Module):
-    def __init__(self, state_dim, n_joints, n_bins=5, hidden_sizes=[512, 256]):
+    def __init__(self, state_dim, n_joints, n_bins=7, hidden_sizes=[256, 128]):
         super(QNetwork, self).__init__()
         self.state_dim = state_dim
         self.n_joints = n_joints
@@ -67,97 +67,11 @@ class ReplayBuffer:
 
 
 # ----------------------
-# DQN Agent
-# ----------------------
-# class DQNAgent:
-#     def __init__(self, state_dim, n_joints, n_bins=5, lr=1e-3, gamma=0.99,
-#                  epsilon_start=1.0, epsilon_end=0.05, epsilon_decay=0.995,
-#                  buffer_size=100000, batch_size=64, target_update=10, device='cpu'):
-
-#         self.n_joints = n_joints
-#         self.n_bins = n_bins
-#         self.gamma = gamma
-#         self.epsilon = epsilon_start
-#         self.epsilon_end = epsilon_end
-#         self.epsilon_decay = epsilon_decay
-#         self.batch_size = batch_size
-#         self.device = device
-#         self.target_update = target_update
-
-#         self.q_net = QNetwork(state_dim, n_joints, n_bins).to(device)
-#         self.target_net = QNetwork(state_dim, n_joints, n_bins).to(device)
-#         self.target_net.load_state_dict(self.q_net.state_dict())
-#         self.target_net.eval()
-
-#         self.optimizer = optim.Adam(self.q_net.parameters(), lr=lr)
-#         self.replay_buffer = ReplayBuffer(buffer_size)
-#         self.steps_done = 0
-
-#         # Discretized torque bins
-#         self.torque_bins = np.linspace(-1.0, 1.0, n_bins)
-
-#     # Convert discrete action indices to torques
-#     def indices_to_torques(self, action_indices):
-#         return np.array([self.torque_bins[i] for i in action_indices], dtype=np.float32)
-
-#     def compute_reward(self, env, torques, w_vel=1.0, w_live=0.1, w_energy=0.01):
-#         pos, _ = p.getBasePositionAndOrientation(env.humanoid)
-#         z_height = pos[2]
-
-#         r_vel = env._compute_reward()  # forward displacement
-#         r_live = 1.0 if z_height > 0.3 else 0.0
-#         r_energy = np.sum(np.square(torques))
-#         reward = w_vel * r_vel + w_live * r_live - w_energy * r_energy
-#         if z_height < 0.3:
-#             reward -= 100.0  # large penalty for falling
-#             done = True
-#         return reward
-
-#     def remember(self, state, action, reward, next_state, done):
-#         self.replay_buffer.add(state, action, reward, next_state, done)
-
-#     def update(self):
-#         if self.replay_buffer.size() < self.batch_size:
-#             return
-
-#         states, actions, rewards, next_states, dones = self.replay_buffer.sample(self.batch_size)
-
-#         states = torch.FloatTensor(states).to(self.device)
-#         next_states = torch.FloatTensor(next_states).to(self.device)
-#         rewards = torch.FloatTensor(rewards).to(self.device)
-#         dones = torch.FloatTensor(dones).to(self.device)
-#         actions = torch.LongTensor(actions).to(self.device)  # shape [batch, n_joints]
-
-#         # Compute Q(s,a)
-#         q_values = self.q_net(states).view(self.batch_size, self.n_joints, self.n_bins)
-#         q_values = q_values.gather(2, actions.unsqueeze(-1)).squeeze(-1)
-
-#         # Compute target Q-values
-#         with torch.no_grad():
-#             next_q_values = self.target_net(next_states).view(self.batch_size, self.n_joints, self.n_bins)
-#             max_next_q_values = next_q_values.max(dim=2)[0]
-#             target = rewards[:, None] + self.gamma * max_next_q_values * (1 - dones[:, None])
-
-#         loss = nn.MSELoss()(q_values, target)
-#         self.optimizer.zero_grad()
-#         loss.backward()
-#         self.optimizer.step()
-
-#         # Decay epsilon
-#         self.epsilon = max(self.epsilon * self.epsilon_decay, self.epsilon_end)
-
-#         # Periodically update target network
-#         if self.steps_done % self.target_update == 0:
-#             self.target_net.load_state_dict(self.q_net.state_dict())
-
-#         self.steps_done += 1
-
-# ----------------------
 # DQN Agent (Modified)
 # ----------------------
 class DQNAgent:
     def __init__(self, state_dim, n_joints, n_bins=5, lr=1e-3, gamma=0.99,
-                 epsilon_start=1.0, epsilon_end=0.05, epsilon_decay=0.95,
+                 epsilon_start=1.0, epsilon_end=0.05, epsilon_decay=0.8,
                  buffer_size=100000, batch_size=64, target_update=500, device='cpu'):
 
         self.n_joints = n_joints
@@ -197,7 +111,7 @@ class DQNAgent:
         forward_vel = (torso_com[0] - prev_com[0]) / env.timestep
 
         # Basic survival reward
-        alive_bonus = 1.0 if z_height > 0.5 and forward_vel>0.1 else -5.0
+        alive_bonus = 5.0 if z_height > 0.7 and forward_vel>3 else -5.0
 
         # Energy penalty
         energy_penalty = np.sum(np.square(torques))
