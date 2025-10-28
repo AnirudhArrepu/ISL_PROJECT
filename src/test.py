@@ -7,6 +7,7 @@ import pybullet as p
 import pybullet_data
 from gymnasium import spaces
 import time
+import os
 
 #relative imports
 from humanoidenv import HumanoidWalkEnv
@@ -185,6 +186,17 @@ def extract_theta_init_from_image(image_path):
 
     return np.radians(theta_init)
 
+def run_images_skeleton_extraction(image_dir):
+    print("here")
+    for filename in os.listdir(image_dir):
+        if filename.endswith(('.jpg', '.jpeg', '.png')):
+            image_path = os.path.join(image_dir, filename)
+            
+            keypoints_25 = mediapipe_to_openpose25(image_path)
+            
+            output_path = os.path.join("../outputs", "skeletons", filename)
+            visualize_pose_on_image(image_path, keypoints_25, save_path=output_path)  
+
 def run_pipeline():
     theta_init = extract_theta_init_from_image("../image.png")
 
@@ -271,5 +283,6 @@ def run_pipeline():
     env.close()
 
 if __name__ == "__main__":
-    run_pipeline()
+    # run_pipeline()
+    run_images_skeleton_extraction("../poses")
 
