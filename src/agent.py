@@ -157,7 +157,7 @@ class ReplayBuffer:
 # ----------------------
 class DQNAgent:
     def __init__(self, state_dim, n_joints, n_bins=5, lr=1e-3, gamma=0.99,
-                 epsilon_start=1.0, epsilon_end=0.05, epsilon_decay=0.995,
+                 epsilon_start=1.0, epsilon_end=0.05, epsilon_decay=0.95,
                  buffer_size=100000, batch_size=64, target_update=500, device='cpu'):
 
         self.n_joints = n_joints
@@ -197,7 +197,7 @@ class DQNAgent:
         forward_vel = (torso_com[0] - prev_com[0]) / env.timestep
 
         # Basic survival reward
-        alive_bonus = 1.0 if z_height > 0.5 else -5.0
+        alive_bonus = 1.0 if z_height > 0.5 and forward_vel>0.1 else -5.0
 
         # Energy penalty
         energy_penalty = np.sum(np.square(torques))
