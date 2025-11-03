@@ -71,7 +71,7 @@ class ReplayBuffer:
 # ----------------------
 class DQNAgent:
     def __init__(self, state_dim, n_joints, n_bins=5, lr=1e-3, gamma=0.99,
-                 epsilon_start=1.0, epsilon_end=0.05, epsilon_decay=0.8,
+                 epsilon_start=1, epsilon_end=0.05, epsilon_decay=0.9999,
                  buffer_size=100000, batch_size=64, target_update=500, device='cpu'):
 
         self.n_joints = n_joints
@@ -160,6 +160,7 @@ class DQNAgent:
 
         # Epsilon decay
         self.epsilon = max(self.epsilon * self.epsilon_decay, self.epsilon_end)
+        # print("new epsilon, ", self.epsilon)
 
         # Target network update
         if self.steps_done % self.target_update == 0:

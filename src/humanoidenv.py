@@ -11,7 +11,7 @@ class HumanoidWalkEnv(gym.Env):
     """
     metadata = {"render.modes": ["human"]}
 
-    def __init__(self, urdf_path="../humanoid.urdf", render=False):
+    def __init__(self, urdf_path="../full_humanoid.urdf", render=False):
         super().__init__()
         self.render_mode = render
 
@@ -35,6 +35,11 @@ class HumanoidWalkEnv(gym.Env):
         # Get controllable joints (exclude fixed joints)
         self.joint_indices = [i for i in range(p.getNumJoints(self.humanoid))
                               if p.getJointInfo(self.humanoid, i)[2] != p.JOINT_FIXED]
+        
+        for i in range(p.getNumJoints(self.humanoid)):
+            jinfo = p.getJointInfo(self.humanoid, i)
+            print(i, jinfo[1].decode('utf-8'), jinfo[12])  # joint name + axis
+
 
         n_joints = len(self.joint_indices)
 

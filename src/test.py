@@ -9,8 +9,6 @@ from gymnasium import spaces
 import time
 import os
 
-cv2.startWindowThread()  
-
 #relative imports
 from humanoidenv import HumanoidWalkEnv
 from agent import DQNAgent
@@ -24,8 +22,7 @@ def mediapipe_to_openpose25(image_path):
     results = pose.process(rgb_image)
 
     if not results.pose_landmarks:
-        return None
-        raise ValueError("No person detected in image.", image_path)
+        raise ValueError("No person detected in image.")
     
     lm = results.pose_landmarks.landmark
 
@@ -158,7 +155,7 @@ def visualize_pose_on_image(image_path, keypoints_25, save_path="overlay_pose.jp
             cv2.line(image, pt1, pt2, (255, 255, 255), 2)
 
     cv2.imwrite(save_path, image)
-    # cv2.imshow("Pose Overlay", image)
+    cv2.imshow("Pose Overlay", image)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
     print(f"Pose visualization saved to {save_path}")
@@ -168,34 +165,36 @@ def extract_theta_init_from_image(image_path):
     Extracts joint angles (theta_init) using the 2D pose pipeline,
     which is better suited for PyBullet's joint angle definitions.
     """
+    # Get 2D keypoints for visualization AND angle calculation
     try:
         keypoints_25_2d = mediapipe_to_openpose25(image_path)
-        if keypoints_25_2d is None:
-            return 
     except ValueError as e:
         print(f"Error processing image: {e}")
         print("Falling back to a zero pose.")
-        return np.zeros(11, dtype=np.float32) 
-    
+        return np.zeros(11, dtype=np.float32) # Assuming 11 joints from your skeleton_to_theta_init
+
+    # Use the 2D angle calculation function (skeleton_to_theta_init).
+    # This function is better suited as it calculates relative angles
+    # (e.g., ~0 degrees for a straight arm) which PyBullet expects,
+    # unlike the 3D function which calculates internal angles (e.g., ~180 degrees).
     theta_init = skeleton_to_theta_init(keypoints_25_2d)
     
     print("2D-based θ_init (degrees):", theta_init, flush=True)
+
+    # Visualize the 2D pose that is being used for initialization
+    # visualize_pose_on_image(image_path, keypoints_25_2d, save_path="pose_overlay.jpg")
 
     return np.radians(theta_init)
 
 def run_images_skeleton_extraction(image_dir):
     print("here")
-    output_dir = os.path.join("../outputs", "skeletons")
-    os.makedirs(output_dir, exist_ok=True)
     for filename in os.listdir(image_dir):
         if filename.endswith(('.jpg', '.jpeg', '.png')):
             image_path = os.path.join(image_dir, filename)
             
             keypoints_25 = mediapipe_to_openpose25(image_path)
-            if keypoints_25 is None:
-                continue
             
-            output_path = os.path.join(output_dir, filename)
+            output_path = os.path.join("../outputs", "skeletons", filename)
             visualize_pose_on_image(image_path, keypoints_25, save_path=output_path)  
 
 def run_pipeline():
