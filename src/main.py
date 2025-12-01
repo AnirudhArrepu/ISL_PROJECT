@@ -25,7 +25,7 @@ def mediapipe_to_openpose25(image_path):
 
     if not results.pose_landmarks:
         return None
-        raise ValueError("No person detected in image.", image_path)
+        # raise ValueError("No person detected in image.", image_path)
     
     lm = results.pose_landmarks.landmark
 
@@ -71,20 +71,40 @@ def mediapipe_to_openpose25(image_path):
     keypoints_25 = np.stack(mapping)
     return keypoints_25
 
+def joint_angle_2d_to_pitch(a, b, c):
+    """
+    Convert 2D elbow/knee angle into a pitch rotation suitable for URDF axis x.
+    Returns angle in radians.
+    """
+    # Compute 2D internal angle
+    ang = compute_joint_angle(a, b, c)
+
+    # Convert "internal angle" → "hinge flexion"
+    # 180° = straight, 0° = fully folded
+    flex = 180.0 - ang
+
+    # Map to URDF expected sign:
+    return np.radians(flex)
+
+
 def compute_joint_angle(a, b, c):
-    a, b, c = np.array(a), np.array(b), np.array(c)
+    # Ensure 2D (x, y) for calculation by slicing with [:2]
+    a, b, c = np.array(a)[:2], np.array(b)[:2], np.array(c)[:2]
+    
     ab, cb = a - b, c - b
     dot_product = np.dot(ab, cb)
     norm_product = np.linalg.norm(ab) * np.linalg.norm(cb)
+    
     if norm_product == 0:
-        return None
+        return 0.0  # Return 0 degrees for colinear points
+        
     angle = np.degrees(np.arccos(np.clip(dot_product / norm_product, -1.0, 1.0)))
     return angle
 
 def skeleton_to_theta_init(keypoints_25):
     """
     keypoints_25: np.array (25, 3) of (x, y, conf)
-    returns: np.array (n_angles,) initial pose vector θ_init
+    returns: np.array (n_angles,) initial pose vector θ_init IN DEGREES
     """
 
     # Indices (BODY_25 reference)
@@ -93,40 +113,63 @@ def skeleton_to_theta_init(keypoints_25):
     L_SHOULDER, L_ELBOW, L_WRIST = 5, 6, 7
     MID_HIP, R_HIP, R_KNEE, R_ANKLE = 8, 9, 10, 11
     L_HIP, L_KNEE, L_ANKLE = 12, 13, 14
+    L_BIG_TOE, R_BIG_TOE = 19, 22
 
     kp = keypoints_25
 
     # Helper for missing joints
     def safe_angle(a, b, c):
         try:
+            # Uses the FIXED compute_joint_angle (which now uses 2D)
             return compute_joint_angle(kp[a], kp[b], kp[c])
         except Exception:
             return 0.0
 
-    # Angles
-    angles = {
-        "neck_tilt": safe_angle(MID_HIP, NECK, NOSE),
-        "r_shoulder": safe_angle(NECK, R_SHOULDER, R_ELBOW),
-        "r_elbow": safe_angle(R_SHOULDER, R_ELBOW, R_WRIST),
-        "l_shoulder": safe_angle(NECK, L_SHOULDER, L_ELBOW),
-        "l_elbow": safe_angle(L_SHOULDER, L_ELBOW, L_WRIST),
-        "r_hip": safe_angle(MID_HIP, R_HIP, R_KNEE),
-        "r_knee": safe_angle(R_HIP, R_KNEE, R_ANKLE),
-        "l_hip": safe_angle(MID_HIP, L_HIP, L_KNEE),
-        "l_knee": safe_angle(L_HIP, L_KNEE, L_ANKLE),
-        "r_ankle": safe_angle(R_KNEE, R_ANKLE, 22),  # RBigToe
-        "l_ankle": safe_angle(L_KNEE, L_ANKLE, 19),  # LBigToe
-    }
-    # apply sign conventions explicitly
-    angles["r_shoulder"] *= -1.0
-    angles["r_elbow"]   *= -1.0
-    angles["r_hip"]     *= -1.0
-    angles["r_knee"]    *= -1.0
-    angles["r_ankle"]   *= -1.0
+    # --- Define angles based on URDF joint definitions (flexion/extension) ---
 
+    # Knees & Elbows: URDF 0=straight. 
+    # safe_angle gives internal angle (e.g., 180=straight)
+    # We want: 180 - internal_angle
+    r_knee_angle = 180.0 - safe_angle(R_HIP, R_KNEE, R_ANKLE)
+    l_knee_angle = 180.0 - safe_angle(L_HIP, L_KNEE, L_ANKLE)
+    
+    r_elbow_angle = 180.0 - safe_angle(R_SHOULDER, R_ELBOW, R_WRIST)
+    l_elbow_angle = 180.0 - safe_angle(L_SHOULDER, L_ELBOW, L_WRIST)
+
+    # Hips & Shoulders: Angle relative to torso (flexion)
+    # Approx. torso line: NECK <-> MID_HIP
+    # We measure angle(Torso, Joint, Limb)
+    r_hip_angle = safe_angle(NECK, R_HIP, R_KNEE)
+    l_hip_angle = safe_angle(NECK, L_HIP, L_KNEE)
+
+    r_shoulder_angle = safe_angle(NECK, R_SHOULDER, R_ELBOW)
+    l_shoulder_angle = safe_angle(NECK, L_SHOULDER, L_ELBOW)
+
+    # Neck:
+    neck_tilt = safe_angle(MID_HIP, NECK, NOSE)
+
+    # Ankles: Neutral pose is 90 degrees.
+    # We want angle relative to this 90-degree neutral pose.
+    r_ankle_angle = safe_angle(R_KNEE, R_ANKLE, R_BIG_TOE) - 90.0
+    l_ankle_angle = safe_angle(L_KNEE, L_ANKLE, L_BIG_TOE) - 90.0
+ 
+    angles = {
+        "neck_tilt": neck_tilt,
+        "r_shoulder": r_shoulder_angle,
+        "r_elbow": r_elbow_angle,
+        "l_shoulder": l_shoulder_angle,
+        "l_elbow": l_elbow_angle,
+        "r_hip": r_hip_angle,
+        "r_knee": r_knee_angle,
+        "l_hip": l_hip_angle,
+        "l_knee": l_knee_angle,
+        "r_ankle": r_ankle_angle,
+        "l_ankle": l_ankle_angle,
+    }
+
+    # Return angles in DEGREES. The next function will convert to radians.
     theta_init = np.array(list(angles.values()), dtype=np.float32)
     return theta_init
-
 def visualize_pose_on_image(image_path, keypoints_25, save_path="overlay_pose.jpg"):
     """
     Draws the reconstructed 2D skeleton on top of the input image.
@@ -144,6 +187,18 @@ def visualize_pose_on_image(image_path, keypoints_25, save_path="overlay_pose.jp
         (11, 22), (22, 23), (11, 24),        # Right foot (Ankle->BigToe, BigToe->SmallToe, Ankle->Heel)
         (14, 19), (19, 20), (14, 21)         # Left foot
     ]
+
+    JOINT_TRIPLETS = [
+        (1, 2, 3),    # Right elbow
+        (1, 5, 6),    # Left elbow
+        (8, 9, 10),   # Right knee
+        (8, 12, 13),  # Left knee
+        (2, 1, 5),    # Shoulder span
+        (9, 8, 12),   # Hip span
+        (5, 6, 7),    # Left wrist
+        (2, 3, 4),    # Right wrist
+    ]
+
 
     image = cv2.imread(image_path)
     h, w, _ = image.shape
@@ -163,6 +218,22 @@ def visualize_pose_on_image(image_path, keypoints_25, save_path="overlay_pose.jp
         if a < len(points) and b < len(points):
             pt1, pt2 = points[a], points[b]
             cv2.line(image, pt1, pt2, (255, 255, 255), 2)
+
+    for (a, b) in BODY_25_PAIRS:
+            if a < len(points) and b < len(points):
+                cv2.line(image, points[a], points[b], (255, 255, 255), 2)
+
+        # Draw angles
+    if True:
+        for (a, b, c) in JOINT_TRIPLETS:
+            if max(a, b, c) < len(points):
+                angle = compute_joint_angle(points[a], points[b], points[c])
+                bx, by = points[b]
+                cv2.putText(
+                    image, f"{int(angle)}°",
+                    (bx + 8, by - 8),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1, cv2.LINE_AA
+                )
 
     cv2.imwrite(save_path, image)
     # cv2.imshow("Pose Overlay", image)
@@ -188,47 +259,46 @@ def extract_theta_init_from_image(image_path):
     
     print("2D-based θ_init (degrees):", theta_init, flush=True)
 
-    return np.radians(theta_init)
+    # return np.radians(theta_init)
+    return theta_init
 
 # import numpy as np
 
-def map_theta_to_joint_angles(theta_init):
+def map_theta_to_joint_angles(theta_init_degrees):
     """
-    Maps the 11-element theta_init (neck, shoulders, elbows, hips, knees, ankles)
-    to your URDF joint order (12 joints total).
-    Handles radians, sign corrections, and clipping for stability.
+    Maps the 11-element theta_init (in degrees) to the URDF joint order.
+    Handles radians conversion and clipping.
     """
-    if theta_init is None or len(theta_init) < 11:
+    if theta_init_degrees is None or len(theta_init_degrees) < 11:
         print("[WARN] Invalid theta_init; returning neutral pose.")
         return np.zeros(12, dtype=np.float32)
 
-    # Convert degrees → radians if necessary
-    theta = np.asarray(theta_init, dtype=np.float32)
-    if np.max(np.abs(theta)) > 2 * np.pi:
-        theta = np.radians(theta)
+    # Convert degrees -> radians
+    theta = np.radians(theta_init_degrees)
 
     # Clip extreme angles for physical realism
-    theta = np.clip(theta, -np.pi / 2, np.pi / 2)
+    theta = np.clip(theta, np.radians(-90), np.radians(90))
 
-    # ---- Human joint angles order ----
-    # [neck, r_shoulder, r_elbow, l_shoulder, l_elbow,
-    #  r_hip, r_knee, l_hip, l_knee, r_ankle, l_ankle]
+    # ---- Input theta (index) ----
+    # 0:neck, 1:r_shoulder, 2:r_elbow, 3:l_shoulder, 4:l_elbow,
+    # 5:r_hip, 6:r_knee, 7:l_hip, 8:l_knee, 9:r_ankle, 10:l_ankle
 
     # ---- Map to URDF order ----
-    # (tuned so positive angles bend naturally)
+    # Your URDF is symmetric (all pitch joints on +X axis),
+    # so we should NOT flip signs for the right side.
     mapping = {
-        "torso": 0.1 * (theta[5] + theta[7]),  # small spine lean avg of hips
-        "neck": theta[0] * 0.5,
+        "torso": 1 * (theta[5] + theta[7]),  # Small lean from hips
+        "neck": theta[0],
         "l_shoulder": theta[3],
         "l_elbow": theta[4],
-        "r_shoulder": -theta[1],
-        "r_elbow": -theta[2],
+        "r_shoulder": theta[1],  # NO FLIP
+        "r_elbow": theta[2],     # NO FLIP
         "l_hip": theta[7],
         "l_knee": theta[8],
         "l_ankle": theta[10],
-        "r_hip": -theta[5],
-        "r_knee": -theta[6],
-        "r_ankle": -theta[9],
+        "r_hip": theta[5],       # NO FLIP
+        "r_knee": theta[6],      # NO FLIP
+        "r_ankle": theta[9],     # NO FLIP
     }
 
     # Final order according to your environment
@@ -247,8 +317,9 @@ def map_theta_to_joint_angles(theta_init):
         mapping["r_ankle"],     # 11 right_ankle
     ]
 
-    return np.array(ordered, dtype=np.float32)
+    print("Final mapped angles (radians):", np.round(ordered, 2))
 
+    return np.array(ordered, dtype=np.float32)
 def run_images_skeleton_extraction(image_dir):
     print("here")
     output_dir = os.path.join("../outputs", "skeletons")
@@ -289,7 +360,7 @@ def run_pipeline():
     for ep in range(num_episodes):
         # state, _ = env.reset(initial_pose=theta_init_3d)  
         state, _ = env.reset(initial_pose=np.zeros(n_joints))  # can replace with pose-based init
-        
+
         pos, _ = p.getBasePositionAndOrientation(env.humanoid)
         prev_com = np.array(pos)
         done = False
@@ -331,6 +402,7 @@ if __name__ == "__main__":
     # env = HumanoidWalkEnv(render=True)
     # theta_init_2d = extract_theta_init_from_image("../poses/1_the-departed-00105821.jpg")
     # theta_init_3d = map_theta_to_joint_angles(theta_init_2d)
+    # visualize_pose_on_image("../poses/1_the-departed-00105821.jpg", mediapipe_to_openpose25("../poses/1_the-departed-00105821.jpg"), "../overlay.jpg")
     # env.reset(initial_pose=theta_init_3d)
     # input("Press Enter to exit...")
     # run_images_skeleton_extraction("../poses")

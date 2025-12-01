@@ -100,29 +100,53 @@ class DQNAgent:
         """Convert discrete action indices to continuous torque array."""
         return np.array([self.torque_bins[a] for a in action_indices], dtype=np.float32)
 
-    def compute_reward(self, env, prev_com, torques, step_count, w_survival=0.01,
-                       w_vel=2.0, w_live=0.5, w_energy=0.008):
-        """Custom reward encouraging forward velocity, stability, and efficiency."""
-        pos, _ = p.getBasePositionAndOrientation(env.humanoid)
-        z_height = pos[2]
-        torso_com = np.array(pos)
+    def compute_reward(self, env, prev_com, torques, step_count):
+        pos, orn = p.getBasePositionAndOrientation(env.humanoid)
+        z = pos[2]
+        com = np.array(pos)
 
-        # Forward velocity (only along x)
-        forward_vel = (torso_com[0] - prev_com[0]) / env.timestep
+        # Forward velocity (x direction)
+        forward_vel = (com[0] - prev_com[0]) / env.timestep
 
-        # Basic survival reward
-        alive_bonus = 5.0 if z_height > 0.7 and forward_vel>3 else -5.0
+        # -----------------------
+        # Reward Components
+        # -----------------------
 
-        # Energy penalty
-        energy_penalty = np.sum(np.square(torques))
+        # 1. Alive reward (survival)
+        alive = 1.0 if z > 0.6 else -10.0
 
-        # survival reward based on step_count
-        r_survival = w_survival * step_count
+        # 2. Forward progress reward
+        r_forward = 2.0 * forward_vel
 
+        # 3. Upright reward (penalize tilting)
+        # dot product of torso up vector with world up
+        _, torso_orn = p.getLinkState(env.humanoid, 1)[4:6]
+        torso_up = p.getMatrixFromQuaternion(torso_orn)[6:9]
+        upright = np.dot(torso_up, np.array([0, 0, 1]))   # 1 = perfectly upright
+
+        r_upright = 2.0 * upright
+
+        # 4. Energy / torque penalty
+        r_energy = -0.001 * np.sum(np.square(torques))
+
+        # 5. Smooth motion (joint velocity penalty)
+        joint_states = p.getJointStates(env.humanoid, env.joint_indices)
+        joint_vel = np.array([s[1] for s in joint_states])
+        r_smooth = -0.05 * np.sum(np.square(joint_vel))
+
+        # 6. Lateral stability (stay balanced in y axis)
+        r_balance = -1.0 * abs(com[1])
+
+        # -----------------------
         # Total reward
-        reward = (w_vel * forward_vel) + (w_live * alive_bonus) - (w_energy * energy_penalty) + r_survival
-        done = z_height < 0.5  # terminate if fallen
-        return reward, done , torso_com
+        # -----------------------
+        reward = r_forward + alive + r_upright + r_energy + r_smooth + r_balance
+
+        # Episode termination: fallen
+        done = z < 0.3 or upright < 0.2
+
+        return reward, done, com
+
 
     def remember(self, state, action, reward, next_state, done):
         self.replay_buffer.add(state, action, reward, next_state, done)

@@ -16,7 +16,7 @@ setup(
     python_requires='>=3.8',
     entry_points={
         "console_scripts": [
-            "run-pipeline=test:run_pipeline",  # path inside package
+            "run-pipeline=main:run_pipeline",  # path inside package
         ],
     },
 )

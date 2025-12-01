@@ -1,5 +1,5 @@
 gymnasium==1.2.1
-mediapipe==0.10.21
+mediapipe
 numpy==2.3.4
 pybullet==3.2.7
 torch==2.6.0
